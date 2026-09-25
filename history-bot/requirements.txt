@@ -1,0 +1,9 @@
+requests>=2.31.0
+PyYAML>=6.0
+python-dotenv>=1.0.1
+python-telegram-bot[job-queue]>=20.0,<23
+# MAX messenger SDK. It installs the Python module `pymax` with Client and Photo.
+maxapi-python==2.4.1
+Pillow>=10.0.0
+
+pytesseract>=0.3.13

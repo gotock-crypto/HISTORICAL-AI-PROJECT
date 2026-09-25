@@ -1,0 +1,40 @@
+project: history_daily_v6
+
+daily:
+  timezone: Europe/Moscow
+  events_per_day: 20
+  minimum_events: 20
+  images_per_event: 4
+  preparation_hour: 0
+
+content:
+  min_chars: 650
+  max_chars: 880
+  ideal_min_chars: 700
+  ideal_max_chars: 820
+
+media:
+  generation_attempts: 3
+  generation_timeout: 180
+  max_candidates: 20
+  candidate_limit: 40
+  min_width: 900
+  download_min_width: 300
+  download_min_height: 200
+  download_min_aspect_ratio: 0.35
+  download_max_aspect_ratio: 3.5
+  min_match_score: 4
+  search_cycles: 2
+  visual_duplicate_distance: 6
+  min_aspect_ratio: 0.35
+  max_aspect_ratio: 3.5
+  min_primary_subject_score: 4
+
+quality:
+  duplicate_threshold: 0.76
+  max_topic_plans: 1
+  min_story_score: 65
+
+publish:
+  telegram: true
+  max: true

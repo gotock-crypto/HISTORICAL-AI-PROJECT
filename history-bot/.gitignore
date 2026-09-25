@@ -1,0 +1,49 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+venv-*/
+.venv/
+
+# Runtime / local state
+runtime/
+persistent/
+backups/
+
+# Databases and SQLite runtime files
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+
+# Generated media
+*.mp4
+*.mp3
+*.wav
+*.webm
+
+# Credentials / tokens
+*token*.json
+*client_secret*.json
+*credentials*.json
+*secret*.json
+
+# Backup files
+*.bak*
+*.backup*
+*.before*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

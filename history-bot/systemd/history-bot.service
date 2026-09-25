@@ -1,0 +1,15 @@
+[Unit]
+Description=History Daily Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/history-bot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/history-bot/venv/bin/python /opt/history-bot/main.py --admin
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
