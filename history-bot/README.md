@@ -1,98 +1,356 @@
-# History Daily Bot — Minerals-style pipeline
+# Historical AI Project
 
-Цель версии: один раз в сутки собрать очередь реальных исторических событий на текущую календарную дату, заранее подобрать несколько URL изображений, а в течение дня только последовательно публиковать подготовленную очередь.
+## AI-powered historical content automation pipeline
 
-## Архитектура
+Production-oriented Telegram/MAX publishing system that turns structured historical events into a daily, stateful content queue, validates visual material, generates editorial text with an LLM, and publishes each prepared story independently to configured platforms.
+
+The project is built around a clear separation of responsibilities:
+
+**event selection → ranking → deduplication → daily queue → image discovery → image validation → LLM writing → platform publishing → persistent state**
+
+---
+
+## What the system does
+
+Every day the system prepares a queue of historical events for the current calendar date.
+
+### Daily preparation
 
 ```text
-00:00 Europe/Amsterdam
-  -> Wikimedia On This Day (structured feed)
-  -> фильтрация и ranking
-  -> global dedup по SQLite
-  -> 12–15+ daily_events
-  -> metadata-only image discovery
-  -> 3–4 URL на событие
-  -> daily queue READY
-
-каждые 3 часа / ручной запуск
-  -> next READY event
-  -> candidate #1..N
-  -> временная загрузка
-  -> MIME/PIL/relevance/dedup validation
-  -> лучший кандидат
-  -> GigaChat пишет Telegram/MAX post
-  -> Telegram и MAX независимо
-  -> только после успешной публикации всех настроенных платформ: POSTED
-  -> временный файл удаляется
+Wikimedia On This Day
+        ↓
+normalization
+        ↓
+filtering / ranking
+        ↓
+SQLite global deduplication
+        ↓
+daily_events
+        ↓
+metadata-only image discovery
+        ↓
+multiple candidate URLs per event
+        ↓
+READY queue
 ```
 
-### Важное отличие от старых версий
+The daily queue is prepared once and then consumed during the day. This separates expensive preparation from the actual publishing cycle.
 
-GigaChat **не ищет темы**. Он получает уже выбранное событие из `daily_events` и используется только для написания поста.
+### Publication cycle
 
-Изображения постоянно на сервере не хранятся: в `daily_media` находятся только URL и metadata. Файл появляется во временном каталоге непосредственно перед публикацией и удаляется после использования.
+```text
+next READY event
+      ↓
+candidate image #1..N
+      ↓
+temporary download
+      ↓
+MIME / PIL / relevance / visual dedup validation
+      ↓
+best valid image
+      ↓
+GigaChat generates the post
+      ↓
+Telegram publication ─────┐
+                          ├─→ successful platforms → POSTED
+MAX publication ──────────┘
+      ↓
+temporary media removed
+```
 
-## База
+The system can also be triggered manually from the admin interface.
 
-Существующие таблицы `posts`, `publishes`, `topics`, `media_memory` сохраняются. Добавлены:
+---
 
-- `daily_batches` — один batch на календарный день;
-- `daily_events` — события очереди и их состояния;
-- `daily_media` — URL/metadata кандидатов изображений.
+## Key engineering decisions
 
-В существующую `posts` добавлены совместимые поля `daily_event_id`, `topic_key`, `topic`.
+### 1. Event selection is separated from LLM generation
 
-## Статусы события
+GigaChat does **not** search for historical topics.
 
-- `ready` — ждёт публикации;
-- `processing` — зарезервировано для создания draft;
-- `publishing` — есть draft, идёт/ожидается публикация платформ;
-- `posted` — Telegram + MAX успешно завершены;
-- `skipped` — все подготовленные изображения события недоступны.
+The system first selects and ranks a concrete historical event and stores it in `daily_events`. Only after the event and visual material have been selected does the LLM generate the editorial text.
 
-## Установка / обновление
+This keeps content selection deterministic and makes the LLM responsible for the part where it provides the most value: editorial generation.
 
-1. Сделать backup `/opt/history-bot`, БД, `.env` и MAX session.
-2. Распаковать архив поверх проекта, **не заменяя `.env`, data/history.db и runtime/max_session**.
-3. Проверить зависимости через `/opt/history-bot/venv/bin/pip install -r requirements.txt`.
-4. Запустить syntax/self-test.
-5. `systemctl daemon-reload` не обязателен, если unit не менялся.
-6. `systemctl restart history-bot.service`.
-7. Проверить `journalctl -u history-bot.service -f`.
+### 2. Stateful daily queue
 
-## Проверка
+Each event moves through an explicit state machine:
+
+```text
+READY
+  ↓
+PROCESSING
+  ↓
+PUBLISHING
+  ↓
+POSTED
+
+or
+
+READY → SKIPPED
+```
+
+Persistent state is stored in SQLite, so the queue can recover after a process restart instead of relying on in-memory execution state.
+
+### 3. Image discovery without permanent media storage
+
+The system stores image URLs and metadata rather than maintaining a permanent image archive.
+
+Before publication:
+
+- candidate URL is selected;
+- image is downloaded temporarily;
+- MIME/PIL checks are performed;
+- dimensions and aspect ratio are validated;
+- relevance is evaluated;
+- visual duplicates are rejected;
+- the selected file is used for publication;
+- the temporary file is deleted.
+
+### 4. Independent platform publishing
+
+Telegram and MAX are handled independently.
+
+An event becomes `POSTED` only after all configured publication targets succeed. A failure on one platform therefore does not get silently represented as a fully completed event.
+
+---
+
+## Architecture
+
+### Core components
+
+| Component | Responsibility |
+|---|---|
+| `content/daily.py` | Current-date historical event source and normalization |
+| `content/planner.py` | Event scoring, ranking and deterministic planning |
+| `content/events.py` | Curated historical event metadata and editorial attributes |
+| `db.py` | SQLite persistence, deduplication and queue state |
+| `core.py` | Main preparation, media selection and publishing workflow |
+| `admin.py` | Telegram admin controls and scheduled execution |
+| `publishers.py` | Telegram publishing |
+| `max/publisher.py` | MAX publishing |
+| `youtube_echo.py` | Historical short-video generation/publishing contour |
+| `youtube_echo_cli.py` | CLI entry point for the YouTube contour |
+| `prompts/` | LLM editorial and visual-prompt templates |
+
+---
+
+## Data model
+
+The project preserves the existing publishing model and adds a dedicated daily queue.
+
+Main daily entities:
+
+- `daily_batches` — one preparation batch for a calendar date;
+- `daily_events` — selected historical events and their processing state;
+- `daily_media` — candidate image URLs and metadata.
+
+The existing `posts`, `publishes`, `topics` and `media_memory` structures remain part of the system.
+
+The queue also uses persistent identifiers such as `daily_event_id` and `topic_key` to connect event selection, deduplication and publication history.
+
+---
+
+## Content pipeline
+
+### Historical events
+
+The system uses Wikimedia's structured **On This Day** source together with the project's event planning and ranking logic.
+
+Events are normalized, scored and checked against publication history before entering the daily queue.
+
+### Visual pipeline
+
+Candidate media can be discovered from external sources such as Wikimedia Commons and Internet Archive.
+
+The pipeline is intentionally metadata-first:
+
+```text
+search metadata
+      ↓
+candidate URLs
+      ↓
+download only when needed
+      ↓
+technical validation
+      ↓
+relevance validation
+      ↓
+visual duplicate validation
+      ↓
+selected media
+```
+
+This reduces unnecessary permanent storage and keeps media handling inside the publication workflow.
+
+### Editorial generation
+
+GigaChat receives the already-selected historical event and selected visual context.
+
+It is used for generating the final editorial text rather than for discovering the underlying historical topic.
+
+---
+
+## Reliability and operational design
+
+The project includes production-oriented mechanisms such as:
+
+- SQLite persistent state;
+- idempotent daily preparation;
+- publication state machine;
+- duplicate prevention;
+- retry/fallback-oriented media handling;
+- candidate image fallback;
+- logging and runtime diagnostics;
+- restart-safe queue state;
+- admin controls;
+- scheduled preparation and publishing;
+- independent platform publishing;
+- temporary media cleanup.
+
+The system is designed around the assumption that external APIs, media URLs and publishing platforms can fail independently.
+
+---
+
+## YouTube / History Echo
+
+The repository also contains a separate short-video contour for historical content.
+
+The implementation includes:
+
+- Edge TTS voice generation;
+- FFmpeg/ffprobe media processing;
+- vertical 1080×1920 video format;
+- background music;
+- voice/music mixing and ducking;
+- MP4 validation;
+- YouTube API/OAuth integration.
+
+This contour is separated from the main Telegram/MAX publishing pipeline.
+
+Production credentials and OAuth tokens are intentionally excluded from the repository.
+
+---
+
+## Configuration
+
+Runtime configuration is kept separate from secrets.
+
+Public repository files include:
+
+- `config.yaml` — non-secret application parameters;
+- `.env.example` — environment variable template;
+- `requirements.txt` — Python dependencies.
+
+Production secrets belong in `.env` and local credential/session files and are excluded by `.gitignore`.
+
+---
+
+## Installation
+
+Example server workflow:
 
 ```bash
-/opt/history-bot/venv/bin/python -m compileall /opt/history-bot
-/opt/history-bot/venv/bin/python /opt/history-bot/self_test.py
+git clone https://github.com/gotock-crypto/HISTORICAL-AI-PROJECT.git
+cd HISTORICAL-AI-PROJECT/history-bot
+
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Configure the environment using `.env.example`.
+
+For an existing production installation, preserve the production database, environment variables and runtime session data when updating the source.
+
+---
+
+## Verification
+
+Basic checks:
+
+```bash
+python -m compileall .
+python self_test.py
+```
+
+For a systemd deployment:
+
+```bash
 systemctl status history-bot.service
 journalctl -u history-bot.service -n 200 --no-pager
 ```
 
-Для реального end-to-end теста публикации использовать существующие Telegram/MAX credentials. В архиве нет и не должно быть production secrets.
+---
 
-## Изменённые файлы
+## Repository structure
 
-- `history_bot/content/daily.py` — новый источник и нормализация событий дня.
-- `history_bot/db.py` — совместимая дневная очередь и state machine.
-- `history_bot/core.py` — подготовка queue, metadata-only media discovery, event-based draft pipeline и более мягкая media validation.
-- `history_bot/admin.py` — фиксированный автопостинг 3 часа, daily preparation в 00:00 и ручная подготовка queue; существующие Telegram/MAX publishers не переписаны.
-- `config.yaml` — параметры дневной очереди и media validation.
-- `README.md` — архитектура и эксплуатация.
+```text
+history-bot/
+├── main.py
+├── core.py
+├── config.yaml
+├── requirements.txt
+├── self_test.py
+├── systemd/
+├── history_bot/
+│   ├── admin.py
+│   ├── core.py
+│   ├── db.py
+│   ├── publishers.py
+│   ├── youtube_echo.py
+│   ├── youtube_echo_cli.py
+│   ├── content/
+│   │   ├── daily.py
+│   │   ├── editorial.py
+│   │   ├── events.py
+│   │   └── planner.py
+│   ├── max/
+│   │   └── publisher.py
+│   └── prompts/
+└── .env.example
+```
 
-## Контрольный список после установки
+---
 
-- [ ] БД открывается, старые таблицы сохранены.
-- [ ] `.env` сохранён.
-- [ ] MAX session сохранена.
-- [ ] Daily batch создаётся только один раз на дату.
-- [ ] В batch попадают события именно текущего календарного дня.
-- [ ] Уже опубликованные `topic_key` не попадают в новую очередь.
-- [ ] Для события сохраняются только URL/metadata изображений.
-- [ ] Битое/нерелевантное изображение не ломает событие целиком.
-- [ ] При исчерпании изображений событие пропускается и берётся следующее.
-- [ ] GigaChat вызывается только после выбора события и изображения.
-- [ ] Telegram/MAX обрабатываются независимо.
-- [ ] Событие становится `posted` только после успеха всех настроенных платформ.
-- [ ] После публикации временный файл удалён.
-- [ ] После restart состояние очереди не теряется.
+## Tech stack
+
+**Python · SQLite · Telegram Bot API · MAX API · GigaChat · Wikimedia · Internet Archive · Pillow · OCR/visual validation · FFmpeg · Edge TTS · YouTube API · systemd · Linux**
+
+---
+
+## Security
+
+The public repository intentionally excludes:
+
+- production `.env`;
+- Telegram bot tokens;
+- GigaChat credentials;
+- MAX sessions;
+- YouTube OAuth tokens;
+- YouTube client secrets;
+- production SQLite databases;
+- runtime state;
+- virtual environments;
+- backup files.
+
+Use `.env.example` as the configuration template.
+
+---
+
+## Project focus
+
+This project demonstrates practical work at the intersection of:
+
+- AI automation;
+- LLM integration;
+- API orchestration;
+- content pipelines;
+- workflow/state-machine design;
+- data deduplication;
+- media validation;
+- scheduled publishing;
+- external-service fault handling;
+- production-oriented Linux deployment.
+
+It is not a single LLM script. The core engineering problem is coordinating multiple external services and persistent application state into a repeatable autonomous workflow.
