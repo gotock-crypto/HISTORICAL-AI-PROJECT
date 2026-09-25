@@ -1,89 +1,89 @@
 # Historical AI Project
 
-## AI Content Automation & Publishing Pipeline
+## AI-автоматизация исторического контента и публикации
 
-A production-oriented AI automation system that turns structured historical events into a daily publishing queue, validates visual material, generates editorial content with an LLM, and publishes prepared stories to Telegram and MAX.
+Production-oriented AI-система, которая превращает структурированные исторические события в ежедневную очередь контента, подбирает и валидирует изображения, генерирует редакционный текст с помощью LLM и публикует готовые материалы в Telegram и MAX.
 
-The project combines **AI integration, API orchestration, workflow automation, persistent state, media validation, deduplication and scheduled publishing** into one autonomous content pipeline.
+Проект объединяет **AI-интеграцию, работу с API, автоматизацию workflow, persistent state, дедупликацию, валидацию медиа и планировщик публикаций** в единый автономный pipeline.
 
 ---
 
-## What the system does
+## Что делает система
 
-The pipeline separates content preparation from publication:
+Pipeline разделяет подготовку контента и его публикацию:
 
 ```text
-Historical event sources
+Источники исторических событий
         ↓
-Filtering / ranking
+Фильтрация / ranking
         ↓
-SQLite deduplication
+Дедупликация в SQLite
         ↓
-Daily event queue
+Ежедневная очередь событий
         ↓
-Image discovery
+Поиск изображений
         ↓
-Image validation
+Валидация изображений
         ↓
-LLM editorial generation
+Генерация текста через LLM
         ↓
-Telegram + MAX publishing
+Публикация в Telegram + MAX
         ↓
-Persistent publication state
+Сохранение состояния публикации
 ```
 
-A daily batch is prepared for the current calendar date. During the day, the system processes the prepared queue sequentially rather than searching for a new topic for every publication.
+Ежедневно формируется batch событий на текущую календарную дату. Затем в течение дня система последовательно обрабатывает подготовленную очередь, а не ищет новую тему перед каждой публикацией.
 
 ---
 
-## Core pipeline
+## Основной pipeline
 
-### 1. Historical event preparation
+### 1. Подготовка исторических событий
 
-The system uses structured historical-event data, including Wikimedia On This Day, then:
+Система использует структурированные источники исторических событий, включая Wikimedia On This Day, после чего:
 
-- normalizes events;
-- filters and ranks candidates;
-- checks publication history;
-- prevents duplicate topics;
-- creates a persistent daily queue.
+- нормализует события;
+- фильтрует и ранжирует кандидатов;
+- проверяет историю публикаций;
+- предотвращает повторную публикацию тем;
+- формирует persistent daily queue.
 
-### 2. Visual media pipeline
+### 2. Pipeline изображений
 
-For each event, the system discovers candidate image URLs before publication.
+Для каждого события заранее подбираются URL потенциальных изображений.
 
-The selected image goes through validation including:
+Выбранное изображение проходит валидацию:
 
-- MIME / file validation;
-- Pillow-based image checks;
-- dimensions and aspect ratio;
-- relevance checks;
-- visual duplicate detection.
+- MIME / файловая проверка;
+- проверки через Pillow;
+- размеры и aspect ratio;
+- проверка релевантности;
+- визуальная дедупликация.
 
-Images are downloaded temporarily when needed and removed after publication.
+Изображение загружается во временный файл только при необходимости и удаляется после использования.
 
-### 3. LLM generation
+### 3. Генерация через LLM
 
-GigaChat receives an already selected historical event and visual context.
+GigaChat получает уже выбранное историческое событие и визуальный контекст.
 
-The LLM is responsible for editorial generation.
+LLM используется для **редакционной генерации текста**.
 
-It does **not** perform the initial historical-topic search. Topic selection happens earlier in the deterministic pipeline.
+Он не выполняет первичный поиск исторической темы: выбор события происходит раньше, в детерминированной части pipeline.
 
-### 4. Multi-platform publishing
+### 4. Публикация на нескольких платформах
 
-The generated post is published independently to configured platforms:
+Сформированный материал публикуется независимо в настроенные платформы:
 
 - Telegram;
 - MAX.
 
-The event reaches the final `posted` state only after all configured publication targets succeed.
+Событие получает финальный статус `posted` только после успешного завершения публикации на всех настроенных платформах.
 
 ---
 
 ## Stateful workflow
 
-The project uses a persistent state machine:
+Проект использует persistent state machine:
 
 ```text
 READY
@@ -94,28 +94,28 @@ PUBLISHING
   ↓
 POSTED
 
-or
+или
 
 READY → SKIPPED
 ```
 
-State is stored in SQLite rather than relying only on in-memory execution.
+Состояние хранится в SQLite, а не только в оперативной памяти.
 
-This allows the queue and publication workflow to survive process restarts.
+Это позволяет сохранять очередь и состояние публикации после перезапуска процесса.
 
 ---
 
-## Architecture
+## Архитектура
 
 ```text
                      ┌─────────────────────┐
-                     │ Historical sources  │
-                     │ Wikimedia / catalog │
+                     │ Исторические        │
+                     │ источники / каталог  │
                      └──────────┬──────────┘
                                 ↓
                      ┌─────────────────────┐
-                     │ Event planning      │
-                     │ filtering / ranking │
+                     │ Планирование        │
+                     │ фильтрация / ranking│
                      └──────────┬──────────┘
                                 ↓
                      ┌─────────────────────┐
@@ -124,18 +124,18 @@ This allows the queue and publication workflow to survive process restarts.
                      └──────────┬──────────┘
                                 ↓
                      ┌─────────────────────┐
-                     │ Media discovery     │
+                     │ Поиск изображений   │
                      │ candidate URLs      │
                      └──────────┬──────────┘
                                 ↓
                      ┌─────────────────────┐
-                     │ Media validation    │
+                     │ Валидация медиа     │
                      │ relevance / dedup   │
                      └──────────┬──────────┘
                                 ↓
                      ┌─────────────────────┐
                      │ GigaChat            │
-                     │ editorial generation│
+                     │ генерация текста    │
                      └──────────┬──────────┘
                                 ↓
                   ┌─────────────┴─────────────┐
@@ -147,74 +147,74 @@ This allows the queue and publication workflow to survive process restarts.
 
 ---
 
-## Main engineering components
+## Основные инженерные компоненты
 
-| Component | Responsibility |
+| Компонент | Назначение |
 |---|---|
-| Historical event source | Current-date event collection |
-| Planner | Filtering, ranking and deterministic planning |
-| SQLite | Persistent state and deduplication |
-| Daily queue | Sequential event processing |
-| Media discovery | Candidate image search |
-| Media validation | Technical, relevance and visual checks |
-| GigaChat | Editorial text generation |
-| Telegram publisher | Telegram publication |
-| MAX publisher | MAX publication |
-| Admin layer | Manual controls and scheduled execution |
-| YouTube contour | Historical short-video generation |
+| Источник исторических событий | Сбор событий на текущую дату |
+| Planner | Фильтрация, ranking и детерминированное планирование |
+| SQLite | Persistent state и дедупликация |
+| Daily queue | Последовательная обработка событий |
+| Media discovery | Поиск кандидатов изображений |
+| Media validation | Техническая, визуальная и смысловая проверка |
+| GigaChat | Генерация редакционного текста |
+| Telegram publisher | Публикация в Telegram |
+| MAX publisher | Публикация в MAX |
+| Admin layer | Ручное управление и scheduled execution |
+| YouTube contour | Генерация исторических коротких видео |
 
 ---
 
 ## YouTube / History Echo
 
-The repository also contains a separate short-video contour for historical content.
+В репозитории также находится отдельный контур для создания коротких исторических видео.
 
-It includes:
+Используются:
 
 - Edge TTS;
 - FFmpeg / ffprobe;
-- 1080×1920 vertical video;
-- background music;
-- voice/music mixing and ducking;
-- MP4 validation;
-- YouTube API / OAuth integration.
+- вертикальный формат 1080×1920;
+- фоновая музыка;
+- сведение голоса и музыки с ducking;
+- валидация MP4;
+- YouTube API / OAuth.
 
-The YouTube contour is separated from the primary Telegram/MAX publication workflow.
+YouTube-контур отделён от основного pipeline публикации в Telegram/MAX.
 
-Production credentials and OAuth tokens are not included in the repository.
+Production credentials и OAuth-токены в репозитории не хранятся.
 
 ---
 
-## Reliability
+## Надёжность и эксплуатация
 
-The architecture is designed for long-running automation and external-service failures.
+Архитектура рассчитана на длительную автоматическую работу и независимые сбои внешних сервисов.
 
-Relevant mechanisms include:
+Используются:
 
 - persistent SQLite state;
-- daily batch idempotency;
-- duplicate prevention;
-- explicit processing states;
-- candidate-image fallback;
-- media validation;
-- retry-oriented external-service handling;
-- restart-safe queue state;
-- logging and diagnostics;
+- idempotent daily batch;
+- защита от дублей;
+- явные состояния обработки;
+- fallback между кандидатами изображений;
+- валидация медиа;
+- retry-oriented обработка внешних сервисов;
+- восстановление очереди после restart;
+- logging и runtime diagnostics;
 - scheduled execution;
-- independent platform publishing;
-- temporary media cleanup.
+- независимая публикация на платформах;
+- удаление временных файлов после публикации.
 
-The goal is not simply to call an LLM API, but to coordinate several external services into a repeatable autonomous workflow.
+Задача проекта — не просто вызвать LLM API, а **согласовать несколько внешних сервисов, состояние данных и этапы обработки в повторяемый автономный workflow**.
 
 ---
 
-## Technology
+## Технологический стек
 
 **Python · SQLite · GigaChat · Telegram Bot API · MAX API · Wikimedia · Internet Archive · Pillow · OCR / visual validation · FFmpeg · Edge TTS · YouTube API · Linux · systemd**
 
 ---
 
-## Repository structure
+## Структура репозитория
 
 ```text
 HISTORICAL-AI-PROJECT/
@@ -242,9 +242,9 @@ HISTORICAL-AI-PROJECT/
 
 ---
 
-## Security
+## Безопасность
 
-The public repository excludes production secrets and runtime state, including:
+Публичный репозиторий не содержит production secrets и runtime state, включая:
 
 - `.env`;
 - Telegram bot tokens;
@@ -257,32 +257,31 @@ The public repository excludes production secrets and runtime state, including:
 - runtime state;
 - backup files.
 
-Use `.env.example` as the configuration template.
+Для настройки окружения используется шаблон `.env.example`.
 
 ---
 
-## Project focus
+## Что демонстрирует проект
 
-This project demonstrates practical work with:
+Проект демонстрирует практическую работу с:
 
 - AI automation;
 - LLM integration;
 - API orchestration;
-- content automation;
-- workflow and state-machine design;
-- data deduplication;
+- контентными automation pipelines;
+- workflow и state-machine design;
+- дедупликацией данных;
 - media validation;
 - scheduled publishing;
-- external API fault handling;
-- Linux deployment and operational support.
+- обработкой ошибок внешних API;
+- Linux deployment и operational support.
 
-The central engineering task is coordinating **data sources, LLM services, media processing, persistent state and multiple publishing platforms** into a repeatable automated workflow.
+Ключевая инженерная задача проекта — объединить **источники данных, LLM-сервисы, обработку медиа, persistent state и несколько publishing platforms** в единый воспроизводимый автоматизированный workflow.
 
 ---
 
-## Technical documentation
+## Техническая документация
 
-Detailed installation, update and operational documentation is available in:
+Подробная документация по установке, обновлению и эксплуатации находится здесь:
 
 **[`history-bot/README.md`](history-bot/README.md)**
-
